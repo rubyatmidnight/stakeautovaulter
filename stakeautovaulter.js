@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Stake Auto-Vault Utility (Floaty UI)
-// @version      0.8-floaty
-// @description  Automatically sends a percentage of your profits to the vault, works on stake.com, its mirror sites, and stake.us. Now with floaty draggable UI!
+// @version      0.9-improved
+// @description  Automatically sends a percentage of your profits to the vault, works on stake.com, its mirror sites, and stake.us. Now with floaty draggable UI, config persistence, touch support, and improved reliability!
 // @author       by Ruby, courtesy of Stake Stats; original code framework by Christopher Hummel
 // @website      https://stakestats.net/
 // @homepage     https://feli.fyi/
@@ -23,14 +23,45 @@
     'use strict';
 
     // --- Config ---
-    let SAVE_AMOUNT = 0.1;
-    let BIG_WIN_THRESHOLD = 5;
-    let BIG_WIN_MULTIPLIER = 3;
-    let DISPLAY_VAULT_TOTAL = true;
-    let CHECK_INTERVAL = 90000;
     const INIT_DELAY = 4000;
     const DEFAULT_CURRENCY = 'bnb';
     const DEFAULT_US_CURRENCY = 'sc';
+    const MIN_BALANCE_CHECKS = 2;
+    const DEPOSIT_VAULT_PERCENTAGE = 0.2;
+    const CURRENCY_CACHE_TIMEOUT = 5000;
+    const BALANCE_INIT_RETRIES = 5;
+    const RATE_LIMIT_MAX = 50;
+    const RATE_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour
+
+    // Load config from localStorage or use defaults
+    function loadConfig() {
+        const saved = localStorage.getItem('autovault-config');
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {
+                log('Failed to load saved config:', e);
+            }
+        }
+        return {
+            saveAmount: 0.1,
+            bigWinThreshold: 5,
+            bigWinMultiplier: 3,
+            displayVaultTotal: true,
+            checkInterval: 90000
+        };
+    }
+
+    function saveConfig(config) {
+        localStorage.setItem('autovault-config', JSON.stringify(config));
+    }
+
+    let config = loadConfig();
+    let SAVE_AMOUNT = config.saveAmount;
+    let BIG_WIN_THRESHOLD = config.bigWinThreshold;
+    let BIG_WIN_MULTIPLIER = config.bigWinMultiplier;
+    let DISPLAY_VAULT_TOTAL = config.displayVaultTotal;
+    let CHECK_INTERVAL = config.checkInterval;
 
     // --- Site detection ---
     const hostname = window.location.hostname;
@@ -85,10 +116,14 @@
                     mode: 'cors',
                     cache: 'no-cache'
                 });
+                if (!res.ok) {
+                    log(`API call failed with status ${res.status}: ${res.statusText}`);
+                    return { error: true, status: res.status, message: res.statusText };
+                }
                 return res.json();
             } catch (e) {
                 log('API call failed:', e);
-                return null;
+                return { error: true, message: e.message, type: 'network' };
             }
         }
         async getBalances() {
@@ -166,14 +201,23 @@
 
     // --- Simplified currency detection ---
     function getCurrency() {
-        if (getCurrency.cached) return getCurrency.cached;
+        const now = Date.now();
+        if (getCurrency.cached && getCurrency.cacheTime && (now - getCurrency.cacheTime < CURRENCY_CACHE_TIMEOUT)) {
+            return getCurrency.cached;
+        }
         const el = document.querySelector('[data-active-currency]');
         if (el) {
             const c = el.getAttribute('data-active-currency');
-            if (c) return getCurrency.cached = c.toLowerCase();
+            if (c) {
+                getCurrency.cached = c.toLowerCase();
+                getCurrency.cacheTime = now;
+                return getCurrency.cached;
+            }
         }
-        if (isStakeUS) return getCurrency.cached = DEFAULT_US_CURRENCY;
-        return getCurrency.cached = DEFAULT_CURRENCY;
+        const defaultCurr = isStakeUS ? DEFAULT_US_CURRENCY : DEFAULT_CURRENCY;
+        getCurrency.cached = defaultCurr;
+        getCurrency.cacheTime = now;
+        return defaultCurr;
     }
 
     // --- Get balance from UI ---
@@ -203,21 +247,39 @@
             getCurrentBalance._warned = true;
             log('⚠️ Could not detect balance with any known selector. Please check if Stake updated their UI.');
         }
-        return 0;
+        return getCurrentBalance.lastKnownBalance || 0;
     }
 
     // --- Vault Rate Limit Tracking ---
-    let vaultActionTimestamps = [];
+    function loadRateLimitData() {
+        const saved = sessionStorage.getItem('autovault-ratelimit');
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                return data.filter(ts => Date.now() - ts < RATE_LIMIT_WINDOW);
+            } catch (e) {
+                log('Failed to load rate limit data:', e);
+            }
+        }
+        return [];
+    }
+
+    function saveRateLimitData(timestamps) {
+        sessionStorage.setItem('autovault-ratelimit', JSON.stringify(timestamps));
+    }
+
+    let vaultActionTimestamps = loadRateLimitData();
 
     function canVaultNow() {
         const now = Date.now();
-        vaultActionTimestamps = vaultActionTimestamps.filter(ts => now - ts < 60 * 60 * 1000);
-        return vaultActionTimestamps.length < 50;
+        vaultActionTimestamps = vaultActionTimestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW);
+        saveRateLimitData(vaultActionTimestamps);
+        return vaultActionTimestamps.length < RATE_LIMIT_MAX;
     }
 
     function getVaultCountLastHour() {
         const now = Date.now();
-        vaultActionTimestamps = vaultActionTimestamps.filter(ts => now - ts < 60 * 60 * 1000);
+        vaultActionTimestamps = vaultActionTimestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW);
         return vaultActionTimestamps.length;
     }
 
@@ -682,6 +744,17 @@
         if (obj.saveAmount !== undefined) SAVE_AMOUNT = obj.saveAmount;
         if (obj.bigWinThreshold !== undefined) BIG_WIN_THRESHOLD = obj.bigWinThreshold;
         if (obj.checkInterval !== undefined) CHECK_INTERVAL = obj.checkInterval * 1000;
+
+        // Save config to localStorage
+        config = {
+            saveAmount: SAVE_AMOUNT,
+            bigWinThreshold: BIG_WIN_THRESHOLD,
+            bigWinMultiplier: BIG_WIN_MULTIPLIER,
+            displayVaultTotal: DISPLAY_VAULT_TOTAL,
+            checkInterval: CHECK_INTERVAL
+        };
+        saveConfig(config);
+
         if (running) {
             stopVaultScript();
             startVaultScript();
@@ -690,14 +763,15 @@
 
     function checkCurrencyChange() {
         getCurrency.cached = null;
+        getCurrency.cacheTime = null;
         const newCurrency = getCurrency();
         if (newCurrency !== activeCurrency) {
             log(`💱 Currency changed: ${activeCurrency} → ${newCurrency}`);
             activeCurrency = newCurrency;
             vaultDisplay.reset();
-            updateCurrentBalance();
             isInitialized = false;
             balanceChecks = 0;
+            updateCurrentBalance();
             return true;
         }
         return false;
@@ -707,7 +781,7 @@
         const cur = getCurrentBalance();
         if (cur > 0) {
             oldBalance = cur;
-            if (!isInitialized && balanceChecks++ >= 2) {
+            if (!isInitialized && balanceChecks++ >= MIN_BALANCE_CHECKS) {
                 isInitialized = true;
                 log(`🐾 Initial balance: ${oldBalance.toFixed(8)} ${activeCurrency}`);
             }
@@ -718,42 +792,41 @@
     async function processDeposit(amount, isBigWin) {
         if (amount < 1e-8 || isProcessing) return;
         if (!canVaultNow()) {
-            log('✗ Vault action skipped: rate limit reached (50 per hour).');
+            log(`✗ Vault action skipped: rate limit reached (${RATE_LIMIT_MAX} per hour).`);
             if (uiWidget && typeof uiWidget.updateVaultCount === "function") uiWidget.updateVaultCount();
             return;
         }
         isProcessing = true;
-        const curBal = getCurrentBalance();
         log(isBigWin
             ? `😸 Fancy feast! Saving ${(SAVE_AMOUNT*BIG_WIN_MULTIPLIER*100).toFixed(0)}%: ${amount.toFixed(8)} ${activeCurrency}`
             : `😺 Positive balance difference detected! Saving ${(SAVE_AMOUNT*100).toFixed(0)}%: ${amount.toFixed(8)} ${activeCurrency}`
         );
-        oldBalance = curBal - amount;
         try {
             const resp = await stakeApi.depositToVault(activeCurrency, amount);
             isProcessing = false;
             if (resp && resp.data && resp.data.createVaultDeposit) {
                 vaultDisplay.update(amount);
                 vaultActionTimestamps.push(Date.now());
+                saveRateLimitData(vaultActionTimestamps);
+                // Re-read balance after successful deposit to avoid drift
+                oldBalance = getCurrentBalance();
                 if (uiWidget && typeof uiWidget.updateVaultCount === "function") uiWidget.updateVaultCount();
                 log(`✓ Saved ${amount.toFixed(8)} ${activeCurrency} to vault!`);
             } else {
                 log('✗ Deposit failed, you may be rate limited..', resp);
-                oldBalance = curBal;
             }
         } catch (e) {
             isProcessing = false;
             log('Vault deposit error:', e);
-            oldBalance = curBal;
         }
     }
 
     function initializeBalance() {
         updateCurrentBalance();
-        let tries = 0, maxTries = 5;
+        let tries = 0;
         const intv = setInterval(() => {
             updateCurrentBalance();
-            if (++tries >= maxTries) {
+            if (++tries >= BALANCE_INIT_RETRIES) {
                 clearInterval(intv);
                 if (oldBalance > 0) {
                     isInitialized = true;
