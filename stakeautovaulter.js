@@ -222,353 +222,410 @@
     }
 
     // --- Floaty UI Widget ---
+    // View modes: 'full', 'mini', 'stealth'
+    let currentViewMode = 'full';
+
     function createVaultFloatyUI(startCallback, stopCallback, getParams, setParams, vaultDisplay) {
         // Remove old if present
         if (document.getElementById('autovault-floaty')) {
             document.getElementById('autovault-floaty').remove();
         }
+        if (document.getElementById('autovault-stealth')) {
+            document.getElementById('autovault-stealth').remove();
+        }
 
-        // Style
+        // Style - Clean, minimal design
         const style = document.createElement('style');
+        style.id = 'autovault-styles';
         style.textContent = `
+        /* === FULL PANEL === */
         #autovault-floaty {
-            background: rgba(34,56,74,0.98);
+            background: #0f212e;
             color: #b1bad3;
-            border: 1.5px solid #00c4a7;
-            border-radius: 13px;
-            box-shadow: 0 8px 32px #000a, 0 1.5px 0 #00c4a7;
-            font-family: proxima-nova, sans-serif;
-            font-size: 15px;
-            min-width: 270px;
-            max-width: 350px;
-            padding: 0 0 8px 0;
+            border: 1px solid #2f4553;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 13px;
+            min-width: 240px;
+            max-width: 280px;
             user-select: none;
             position: fixed;
-            top: 32px;
-            right: 32px;
+            top: 80px;
+            right: 20px;
             z-index: 999999;
             display: flex;
             flex-direction: column;
-            align-items: stretch;
-            transition: box-shadow 0.2s, background 0.2s;
+            transition: opacity 0.2s, transform 0.2s;
         }
-        #autovault-floaty .autovault-header {
+        #autovault-floaty.hidden { display: none; }
+        #autovault-floaty .av-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: linear-gradient(90deg,#00c4a7 60%,#ab5893 100%);
-            color: #1a2c38;
-            padding: 10px 18px 10px 16px;
-            border-radius: 13px 13px 0 0;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-            font-size: 1.1em;
-            box-shadow: 0 2px 8px #0002;
+            background: #1a2c38;
+            padding: 8px 10px;
+            border-radius: 8px 8px 0 0;
+            border-bottom: 1px solid #2f4553;
             cursor: grab;
-            position: relative;
         }
-        #autovault-floaty .autovault-close {
-            position: absolute;
-            top: 7px;
-            right: 12px;
-            font-size: 20px;
-            color: #ab5893;
+        #autovault-floaty .av-header:active { cursor: grabbing; }
+        #autovault-floaty .av-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            font-size: 12px;
+            color: #fff;
+            letter-spacing: 0.3px;
+        }
+        #autovault-floaty .av-status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #4a5568;
+        }
+        #autovault-floaty .av-status-dot.running { background: #10b981; }
+        #autovault-floaty .av-header-btns {
+            display: flex;
+            gap: 2px;
+        }
+        #autovault-floaty .av-header-btn {
             background: none;
             border: none;
+            color: #64748b;
             cursor: pointer;
-            font-weight: bold;
-            z-index: 10;
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 14px;
+            line-height: 1;
+            transition: color 0.15s, background 0.15s;
         }
-        #autovault-floaty .autovault-close:hover {
+        #autovault-floaty .av-header-btn:hover {
             color: #fff;
+            background: #2f4553;
         }
-        #autovault-floaty .autovault-content {
-            padding: 18px 20px 10px 20px;
+        #autovault-floaty .av-content {
+            padding: 12px;
             display: flex;
             flex-direction: column;
             gap: 10px;
         }
-        #autovault-floaty label {
+        #autovault-floaty .av-row {
             display: flex;
             align-items: center;
-            font-size: 15px;
-            margin-bottom: 0;
-            gap: 8px;
+            justify-content: space-between;
+        }
+        #autovault-floaty .av-label {
+            color: #94a3b8;
+            font-size: 12px;
         }
         #autovault-floaty input[type="number"] {
             background: #1a2c38;
-            color: #b1bad3;
-            border: 1px solid #2e4157;
+            color: #e2e8f0;
+            border: 1px solid #2f4553;
             border-radius: 4px;
-            padding: 4px 8px;
-            font-size: 15px;
-            width: 70px;
+            padding: 4px 6px;
+            font-size: 12px;
+            width: 60px;
+            text-align: right;
+            transition: border-color 0.15s;
         }
-        #autovault-floaty .autovault-btn {
-            background: linear-gradient(90deg,#00c4a7 60%,#ab5893 100%);
-            color: #1a2c38;
-            border: none;
-            border-radius: 7px;
-            padding: 7px 18px;
-            font-weight: bold;
+        #autovault-floaty input[type="number"]:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        #autovault-floaty .av-btn-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        #autovault-floaty .av-btn {
+            flex: 1;
+            background: #1a2c38;
+            color: #b1bad3;
+            border: 1px solid #2f4553;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 11px;
+            font-weight: 600;
             cursor: pointer;
-            margin-right: 8px;
-            box-shadow: 0 2px 8px #0002;
-            transition: background 0.2s, color 0.2s;
+            transition: all 0.15s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        #autovault-floaty .autovault-btn:hover {
-            background: linear-gradient(90deg,#ab5893 60%,#00c4a7 100%);
+        #autovault-floaty .av-btn:hover:not(:disabled) {
+            background: #2f4553;
             color: #fff;
         }
-        #autovault-floaty .autovault-vaultcount {
-            display: inline-block;
-            margin-left: 8px;
-            font-size: 13px;
-            color: #00c4a7;
-            background: #1a2c38;
-            border-radius: 7px;
-            padding: 2px 10px;
-            font-weight: bold;
-            vertical-align: middle;
-            box-shadow: 0 1px 4px #0002;
+        #autovault-floaty .av-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
         }
-        #autovault-floaty .autovault-help {
-            position: absolute;
+        #autovault-floaty .av-btn.primary {
+            background: #10b981;
+            border-color: #10b981;
+            color: #fff;
+        }
+        #autovault-floaty .av-btn.primary:hover:not(:disabled) {
+            background: #059669;
+        }
+        #autovault-floaty .av-btn.danger {
+            background: #ef4444;
+            border-color: #ef4444;
+            color: #fff;
+        }
+        #autovault-floaty .av-btn.danger:hover:not(:disabled) {
+            background: #dc2626;
+        }
+        #autovault-floaty .av-stats {
+            display: flex;
+            justify-content: space-between;
+            padding-top: 8px;
+            border-top: 1px solid #2f4553;
+            font-size: 11px;
+        }
+        #autovault-floaty .av-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        #autovault-floaty .av-stat-label {
+            color: #64748b;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        #autovault-floaty .av-stat-value {
+            color: #10b981;
+            font-weight: 600;
+        }
+        #autovault-floaty .av-footer {
+            display: flex;
+            justify-content: center;
+            padding: 6px;
+            border-top: 1px solid #2f4553;
+        }
+        #autovault-floaty .av-link {
+            color: #64748b;
+            font-size: 10px;
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+        #autovault-floaty .av-link:hover { color: #94a3b8; }
+
+        /* === MINI MODE === */
+        #autovault-floaty.mini {
+            min-width: auto;
+            max-width: none;
+            border-radius: 20px;
+        }
+        #autovault-floaty.mini .av-header {
+            border-radius: 20px;
+            padding: 6px 12px;
+            border-bottom: none;
+        }
+        #autovault-floaty.mini .av-content,
+        #autovault-floaty.mini .av-footer { display: none; }
+        #autovault-floaty.mini .av-title span { display: none; }
+
+        /* === STEALTH MODE === */
+        #autovault-stealth {
+            position: fixed;
             bottom: 10px;
             right: 10px;
-            width: 30px;
-            height: 30px;
-            background: #00c4a7;
-            color: #1a2c38;
-            border: none;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
-            font-size: 19px;
-            font-weight: bold;
+            background: #4a5568;
             cursor: pointer;
-            box-shadow: 0 2px 8px #0002;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100001;
-            transition: background 0.2s, color 0.2s;
+            z-index: 999999;
+            transition: transform 0.15s, background 0.15s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
-        #autovault-floaty .autovault-help:hover {
-            background: #ab5893;
-            color: #fff;
+        #autovault-stealth:hover {
+            transform: scale(1.5);
         }
-        @media (max-width: 700px) {
+        #autovault-stealth.running { background: #10b981; }
+        #autovault-stealth.hidden { display: none; }
+
+        @media (max-width: 500px) {
             #autovault-floaty {
-                left: 50% !important;
-                top: 10px !important;
-                min-width: 90vw !important;
-                max-width: 98vw !important;
-                right: auto !important;
-                transform: translateX(-50%) !important;
+                right: 10px !important;
+                left: 10px !important;
+                max-width: none;
+                min-width: auto;
             }
         }
         `;
         document.head.appendChild(style);
 
-        // Widget container
+        // Main widget container
         const widget = document.createElement('div');
         widget.id = 'autovault-floaty';
 
+        // Stealth indicator (separate element)
+        const stealthDot = document.createElement('div');
+        stealthDot.id = 'autovault-stealth';
+        stealthDot.className = 'hidden';
+        stealthDot.title = 'AutoVault (click to expand)';
+        document.body.appendChild(stealthDot);
+
         // Header
         const header = document.createElement('div');
-        header.className = 'autovault-header';
-        header.innerHTML = `<span style="display:flex;align-items:center;gap:8px;">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="margin-right:2px;"><circle cx="12" cy="12" r="10" fill="#00c4a7"/><path d="M8 12l2 2 4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            AutoVault
-        </span>`;
-        // Close button
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'autovault-close';
-        closeBtn.title = 'Close';
-        closeBtn.innerHTML = '&times;';
-        closeBtn.onclick = () => widget.remove();
-        header.appendChild(closeBtn);
+        header.className = 'av-header';
+        header.innerHTML = `
+            <div class="av-title">
+                <div class="av-status-dot" id="avStatusDot"></div>
+                <span>AutoVault</span>
+            </div>
+            <div class="av-header-btns">
+                <button class="av-header-btn" id="avMinBtn" title="Minimize">−</button>
+                <button class="av-header-btn" id="avStealthBtn" title="Stealth Mode">○</button>
+                <button class="av-header-btn" id="avCloseBtn" title="Close">×</button>
+            </div>
+        `;
         widget.appendChild(header);
 
         // Content
         const content = document.createElement('div');
-        content.className = 'autovault-content';
-
-        // Controls
-        const saveLabel = document.createElement('label');
-        saveLabel.innerHTML = `Save %: <input id="vaultSaveAmount" type="number" min="0" max="1" step="0.01" value="${getParams().saveAmount}">`;
-
-        const bigWinLabel = document.createElement('label');
-        bigWinLabel.innerHTML = `Big Win Threshold: <input id="vaultBigWinThreshold" type="number" min="1" step="0.1" value="${getParams().bigWinThreshold}">`;
-
-        const intervalLabel = document.createElement('label');
-        intervalLabel.innerHTML = `Check Interval (sec): <input id="vaultCheckInterval" type="number" min="10" step="1" value="${getParams().checkInterval}">`;
-
-        // Start/Stop buttons
-        const btnRow = document.createElement('div');
-        btnRow.style.margin = "10px 0 0 0";
-        btnRow.style.display = "flex";
-        btnRow.style.gap = "10px";
-        const startBtn = document.createElement('button');
-        startBtn.className = 'autovault-btn';
-        startBtn.id = 'vaultStartBtn';
-        startBtn.textContent = 'Start';
-        const stopBtn = document.createElement('button');
-        stopBtn.className = 'autovault-btn';
-        stopBtn.id = 'vaultStopBtn';
-        stopBtn.textContent = 'Stop';
-        stopBtn.disabled = true;
-        btnRow.appendChild(startBtn);
-        btnRow.appendChild(stopBtn);
-
-        // Status
-        const statusRow = document.createElement('div');
-        statusRow.style.fontSize = "13px";
-        statusRow.style.opacity = "0.8";
-        statusRow.innerHTML = `<span id="vaultStatusText">Status: <b>Stopped</b></span> <span id="vaultVaultCount" class="autovault-vaultcount"></span>`;
-
-        // Vault balance display
-        const vaultBalRow = document.createElement('div');
-        vaultBalRow.style.fontSize = "13px";
-        vaultBalRow.style.marginTop = "2px";
-        vaultBalRow.style.display = "flex";
-        vaultBalRow.style.alignItems = "center";
-        vaultBalRow.innerHTML = `<span style="color:#00c4a7;font-weight:bold;">Vault:</span> `;
-        vaultBalRow.appendChild(vaultDisplay._el);
-
-        // Help button
-        const helpBtn = document.createElement('button');
-        helpBtn.className = 'autovault-help';
-        helpBtn.title = 'Help / About';
-        helpBtn.innerHTML = '?';
-
-        // Help modal
-        const helpModal = document.createElement('div');
-        helpModal.id = 'autovault-help-modal';
-        helpModal.style.display = 'none';
-        helpModal.style.position = 'fixed';
-        helpModal.style.zIndex = '100002';
-        helpModal.style.left = '0'; helpModal.style.top = '0'; helpModal.style.right = '0'; helpModal.style.bottom = '0';
-        helpModal.style.background = 'rgba(0,0,0,0.45)';
-        helpModal.innerHTML = `
-            <div style="background:#22384a;color:#b1bad3;border:2px solid #ab5893;border-radius:14px;max-width:370px;margin:80px auto;padding:28px 28px 18px 28px;box-shadow:0 8px 32px #000a;position:relative;font-size:15px;">
-                <button class="closeHelpBtn" title="Close" style="position:absolute;top:10px;right:14px;background:none;border:none;color:#ab5893;font-size:22px;font-weight:bold;cursor:pointer;">&times;</button>
-                <h2 style="margin-top:0;color:#00c4a7;font-size:1.3em;">Stake Auto-Vault Utility</h2>
-                <div>
-                    <b>Author:</b> Ruby<br>
-                    <b>Contact:</b> <a href="https://stakestats.net/" target="_blank" style="color:#00c4a7;">stakestats.net</a><br>
-                    <b>Homepage:</b> <a href="https://feli.fyi/" target="_blank" style="color:#00c4a7;">feli.fyi</a><br>
-                    <b>Version:</b> 0.8-floaty
+        content.className = 'av-content';
+        content.innerHTML = `
+            <div class="av-row">
+                <span class="av-label">Save %</span>
+                <input type="number" id="vaultSaveAmount" min="0" max="1" step="0.01" value="${getParams().saveAmount}">
+            </div>
+            <div class="av-row">
+                <span class="av-label">Big Win Threshold</span>
+                <input type="number" id="vaultBigWinThreshold" min="1" step="0.1" value="${getParams().bigWinThreshold}">
+            </div>
+            <div class="av-row">
+                <span class="av-label">Check Interval (sec)</span>
+                <input type="number" id="vaultCheckInterval" min="10" step="1" value="${getParams().checkInterval}">
+            </div>
+            <div class="av-btn-row">
+                <button class="av-btn primary" id="vaultStartBtn">Start</button>
+                <button class="av-btn danger" id="vaultStopBtn" disabled>Stop</button>
+            </div>
+            <div class="av-stats">
+                <div class="av-stat">
+                    <span class="av-stat-label">Vault Balance</span>
+                    <span class="av-stat-value" id="avVaultBal">0.00</span>
                 </div>
-                <hr style="margin:14px 0 10px 0; border:0; border-top:1px solid #2e4157;">
-                <div>
-                    <b>What does this do?</b><br>
-                    This script automatically sends a percentage of your profits to your Stake vault.<br>
-                    <ul style="margin:8px 0 0 18px; padding:0;">
-                        <li>Works on stake.com, stake.us, and mirror sites</li>
-                        <li>UI controls for % saved, interval, and big win threshold</li>
-                        <li>Open source, no data leaves your browser</li>
-                        <li>Vault actions are rate limited to 50 per hour (Stake API limit)</li>
-                    </ul>
-                </div>
-                <div style="margin-top:18px;font-size:13px;color:#888;text-align:right;">
-                    &copy; 2024 Ruby / Stake Stats
+                <div class="av-stat">
+                    <span class="av-stat-label">Actions/hr</span>
+                    <span class="av-stat-value" id="avVaultCount">0/50</span>
                 </div>
             </div>
         `;
-        document.body.appendChild(helpModal);
-
-        helpBtn.onclick = function(e) {
-            e.stopPropagation();
-            helpModal.style.display = 'block';
-        };
-        helpModal.querySelector('.closeHelpBtn').onclick = function(e) {
-            e.stopPropagation();
-            helpModal.style.display = 'none';
-        };
-        helpModal.onclick = function(e) {
-            if (e.target === helpModal) helpModal.style.display = 'none';
-        };
-
-        // Add to content
-        content.appendChild(saveLabel);
-        content.appendChild(bigWinLabel);
-        content.appendChild(intervalLabel);
-        content.appendChild(btnRow);
-        content.appendChild(statusRow);
-        content.appendChild(vaultBalRow);
-
         widget.appendChild(content);
-        widget.appendChild(helpBtn);
 
-        // Drag logic
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'av-footer';
+        footer.innerHTML = `<a href="https://stakestats.net/" target="_blank" class="av-link">stakestats.net</a>`;
+        widget.appendChild(footer);
+
+        // Replace vault display element reference
+        const vaultBalEl = content.querySelector('#avVaultBal');
+        vaultDisplay._el = vaultBalEl;
+
+        // View mode switching
+        const statusDot = widget.querySelector('#avStatusDot');
+        const minBtn = widget.querySelector('#avMinBtn');
+        const stealthBtn = widget.querySelector('#avStealthBtn');
+        const closeBtn = widget.querySelector('#avCloseBtn');
+
+        function setViewMode(mode) {
+            currentViewMode = mode;
+            if (mode === 'full') {
+                widget.classList.remove('mini', 'hidden');
+                stealthDot.classList.add('hidden');
+            } else if (mode === 'mini') {
+                widget.classList.add('mini');
+                widget.classList.remove('hidden');
+                stealthDot.classList.add('hidden');
+            } else if (mode === 'stealth') {
+                widget.classList.add('hidden');
+                stealthDot.classList.remove('hidden');
+            }
+        }
+
+        minBtn.onclick = (e) => {
+            e.stopPropagation();
+            setViewMode(currentViewMode === 'mini' ? 'full' : 'mini');
+            minBtn.textContent = currentViewMode === 'mini' ? '+' : '−';
+            minBtn.title = currentViewMode === 'mini' ? 'Expand' : 'Minimize';
+        };
+
+        stealthBtn.onclick = (e) => {
+            e.stopPropagation();
+            setViewMode('stealth');
+        };
+
+        stealthDot.onclick = () => {
+            setViewMode('full');
+            minBtn.textContent = '−';
+        };
+
+        closeBtn.onclick = () => {
+            widget.remove();
+            stealthDot.remove();
+        };
+
+        // Drag logic (works on header)
         let isDragging = false, dragOffsetX = 0, dragOffsetY = 0;
         header.addEventListener('mousedown', function(e) {
-            if (e.target === closeBtn) return;
+            if (e.target.closest('.av-header-btns')) return;
             isDragging = true;
-            widget.style.cursor = 'grabbing';
             dragOffsetX = e.clientX - widget.getBoundingClientRect().left;
             dragOffsetY = e.clientY - widget.getBoundingClientRect().top;
-            widget.style.boxShadow = '0 12px 32px #000c, 0 1.5px 0 #00c4a7';
             e.preventDefault();
         });
         document.addEventListener('mousemove', function(e) {
             if (!isDragging) return;
             let newLeft = e.clientX - dragOffsetX;
             let newTop = e.clientY - dragOffsetY;
-            // Clamp to viewport
             newLeft = Math.max(0, Math.min(window.innerWidth - widget.offsetWidth, newLeft));
             newTop = Math.max(0, Math.min(window.innerHeight - widget.offsetHeight, newTop));
             widget.style.left = newLeft + 'px';
             widget.style.top = newTop + 'px';
             widget.style.right = 'auto';
-            widget.style.transform = '';
         });
-        document.addEventListener('mouseup', function() {
-            if (isDragging) {
-                isDragging = false;
-                widget.style.cursor = 'grab';
-                widget.style.boxShadow = '0 8px 32px #000a, 0 1.5px 0 #00c4a7';
-            }
-        });
+        document.addEventListener('mouseup', () => { isDragging = false; });
 
-        // Vault count UI update
-        const vaultCountEl = content.querySelector('#vaultVaultCount');
+        // Status & vault count updates
+        const startBtn = content.querySelector('#vaultStartBtn');
+        const stopBtn = content.querySelector('#vaultStopBtn');
+        const vaultCountEl = content.querySelector('#avVaultCount');
+
         function updateVaultCountUI() {
             const count = getVaultCountLastHour();
-            vaultCountEl.textContent = `Vaults: ${count}/50 (last hour)`;
-            if (count >= 50) {
-                vaultCountEl.style.color = "#ff4d4d";
-                vaultCountEl.title = "You have reached the Stake API vault rate limit (50 per hour).";
-            } else if (count >= 40) {
-                vaultCountEl.style.color = "#ffae00";
-                vaultCountEl.title = "Approaching Stake API vault rate limit (50 per hour).";
-            } else {
-                vaultCountEl.style.color = "#00c4a7";
-                vaultCountEl.title = "Vault actions in the last hour.";
-            }
+            vaultCountEl.textContent = `${count}/50`;
+            vaultCountEl.style.color = count >= 50 ? '#ef4444' : count >= 40 ? '#f59e0b' : '#10b981';
         }
         window.__updateVaultCountUI = updateVaultCountUI;
         updateVaultCountUI();
         setInterval(updateVaultCountUI, 10000);
 
-        // Start/Stop logic
-        const statusText = content.querySelector('#vaultStatusText');
+        function setRunningState(isRunning) {
+            statusDot.classList.toggle('running', isRunning);
+            stealthDot.classList.toggle('running', isRunning);
+            startBtn.disabled = isRunning;
+            stopBtn.disabled = !isRunning;
+        }
+
         startBtn.onclick = () => {
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-            statusText.innerHTML = 'Status: <b style="color:#00c4a7">Running</b>';
+            setRunningState(true);
             startCallback();
             updateVaultCountUI();
         };
         stopBtn.onclick = () => {
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            statusText.innerHTML = 'Status: <b>Stopped</b>';
+            setRunningState(false);
             stopCallback();
             updateVaultCountUI();
         };
 
-        // Parameter change logic
+        // Parameter change handlers
         content.querySelector('#vaultSaveAmount').onchange = function() {
             let v = parseFloat(this.value);
             if (isNaN(v) || v < 0) v = 0;
@@ -589,18 +646,11 @@
             this.value = v;
         };
 
-        // Actually add to body (floaty, not in nav)
         document.body.appendChild(widget);
 
-        // Expose UI update for status so the script can update the widget
         return {
-            setStatus: (txt, color) => {
-                statusText.innerHTML = `Status: <b style="color:${color||'#00c4a7'}">${txt}</b>`;
-            },
-            setRunning: (running) => {
-                startBtn.disabled = running;
-                stopBtn.disabled = !running;
-            },
+            setStatus: (txt, color) => {},
+            setRunning: setRunningState,
             updateVaultCount: updateVaultCountUI
         };
     }
