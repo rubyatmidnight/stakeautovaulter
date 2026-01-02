@@ -68,8 +68,80 @@
     const isStakeUS = hostname.endsWith('.us');
     let isScriptInitialized = false;
 
-    // --- Logging helper ---
-    const log = (...args) => console.log('[AutoVault]', ...args);
+    // --- Activity Log ---
+    const activityLog = [];
+    const MAX_LOG_ENTRIES = 50;
+    let onLogUpdate = null; // callback for UI updates
+
+    function logActivity(message, type = 'info') {
+        const entry = {
+            time: new Date(),
+            message,
+            type // 'info', 'success', 'warning', 'profit', 'bigwin'
+        };
+        activityLog.unshift(entry);
+        if (activityLog.length > MAX_LOG_ENTRIES) activityLog.pop();
+        console.log('[AutoVault]', message);
+        if (onLogUpdate) onLogUpdate(entry);
+    }
+    const log = (...args) => logActivity(args.join(' '), 'info');
+
+    // --- Flavor Text ---
+    const FLAVOR = {
+        profit: [
+            "Cha-ching!",
+            "Nice one!",
+            "Stacking sats...",
+            "To the vault!",
+            "Secured the bag",
+            "Money moves",
+            "Profit locked",
+            "Gains secured",
+            "Smart money",
+            "Auto-saved"
+        ],
+        bigWin: [
+            "JACKPOT VIBES!",
+            "Whale alert!",
+            "MEGA WIN!",
+            "Holy moly!",
+            "Printing money!",
+            "Big fish energy",
+            "LFG!!!",
+            "Massive W",
+            "On fire!",
+            "God mode"
+        ],
+        deposit: [
+            "Deposit detected",
+            "Incoming funds",
+            "New deposit",
+            "Funds arrived",
+            "Balance updated"
+        ],
+        start: [
+            "AutoVault engaged",
+            "Protection active",
+            "Watching your back",
+            "Guardian mode ON",
+            "Vault standing by"
+        ],
+        stop: [
+            "AutoVault paused",
+            "Taking a break",
+            "Guardian resting",
+            "Protection off",
+            "Standing down"
+        ],
+        rateLimit: [
+            "Slow down tiger",
+            "Rate limit hit",
+            "Too fast!",
+            "Cooling off...",
+            "Limit reached"
+        ]
+    };
+    const pickFlavor = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
     // --- Cookie helper ---
     const getCookie = (name) => {
@@ -475,6 +547,81 @@
         }
         #autovault-floaty .av-link:hover { color: #94a3b8; }
 
+        /* === LOG PANEL === */
+        #autovault-floaty .av-log-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            background: #1a2c38;
+            border-top: 1px solid #2f4553;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        #autovault-floaty .av-log-toggle:hover { background: #243442; }
+        #autovault-floaty .av-log-toggle-text {
+            font-size: 10px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        #autovault-floaty .av-log-toggle-icon {
+            font-size: 10px;
+            color: #64748b;
+            transition: transform 0.2s;
+        }
+        #autovault-floaty .av-log-toggle.open .av-log-toggle-icon {
+            transform: rotate(180deg);
+        }
+        #autovault-floaty .av-log {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.25s ease-out;
+            background: #0a1a24;
+        }
+        #autovault-floaty .av-log.open {
+            max-height: 120px;
+        }
+        #autovault-floaty .av-log-inner {
+            padding: 8px;
+            max-height: 120px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 10px;
+            line-height: 1.4;
+        }
+        #autovault-floaty .av-log-inner::-webkit-scrollbar {
+            width: 4px;
+        }
+        #autovault-floaty .av-log-inner::-webkit-scrollbar-track {
+            background: #0a1a24;
+        }
+        #autovault-floaty .av-log-inner::-webkit-scrollbar-thumb {
+            background: #2f4553;
+            border-radius: 2px;
+        }
+        #autovault-floaty .av-log-entry {
+            padding: 2px 0;
+            color: #64748b;
+            display: flex;
+            gap: 6px;
+        }
+        #autovault-floaty .av-log-entry.success { color: #10b981; }
+        #autovault-floaty .av-log-entry.profit { color: #10b981; }
+        #autovault-floaty .av-log-entry.bigwin { color: #fbbf24; }
+        #autovault-floaty .av-log-entry.warning { color: #f59e0b; }
+        #autovault-floaty .av-log-entry.error { color: #ef4444; }
+        #autovault-floaty .av-log-time {
+            color: #475569;
+            flex-shrink: 0;
+        }
+        #autovault-floaty .av-log-empty {
+            color: #475569;
+            font-style: italic;
+            text-align: center;
+            padding: 8px;
+        }
+
         /* === MINI MODE === */
         #autovault-floaty.mini {
             min-width: auto;
@@ -487,6 +634,8 @@
             border-bottom: none;
         }
         #autovault-floaty.mini .av-content,
+        #autovault-floaty.mini .av-log-toggle,
+        #autovault-floaty.mini .av-log,
         #autovault-floaty.mini .av-footer { display: none; }
         #autovault-floaty.mini .av-title span { display: none; }
 
@@ -580,6 +729,57 @@
             </div>
         `;
         widget.appendChild(content);
+
+        // Log toggle
+        const logToggle = document.createElement('div');
+        logToggle.className = 'av-log-toggle';
+        logToggle.innerHTML = `
+            <span class="av-log-toggle-text">Activity Log</span>
+            <span class="av-log-toggle-icon">▼</span>
+        `;
+        widget.appendChild(logToggle);
+
+        // Log panel
+        const logPanel = document.createElement('div');
+        logPanel.className = 'av-log';
+        logPanel.innerHTML = `<div class="av-log-inner" id="avLogInner"><div class="av-log-empty">No activity yet...</div></div>`;
+        widget.appendChild(logPanel);
+
+        const logInner = logPanel.querySelector('#avLogInner');
+
+        // Toggle log panel
+        logToggle.onclick = () => {
+            logToggle.classList.toggle('open');
+            logPanel.classList.toggle('open');
+        };
+
+        // Format time for log
+        const formatTime = (date) => {
+            const h = date.getHours().toString().padStart(2, '0');
+            const m = date.getMinutes().toString().padStart(2, '0');
+            const s = date.getSeconds().toString().padStart(2, '0');
+            return `${h}:${m}:${s}`;
+        };
+
+        // Add log entry to UI
+        function addLogEntry(entry) {
+            // Remove empty message if present
+            const empty = logInner.querySelector('.av-log-empty');
+            if (empty) empty.remove();
+
+            const div = document.createElement('div');
+            div.className = `av-log-entry ${entry.type}`;
+            div.innerHTML = `<span class="av-log-time">${formatTime(entry.time)}</span><span>${entry.message}</span>`;
+            logInner.insertBefore(div, logInner.firstChild);
+
+            // Keep only last 20 entries in UI
+            while (logInner.children.length > 20) {
+                logInner.removeChild(logInner.lastChild);
+            }
+        }
+
+        // Set up log callback
+        onLogUpdate = addLogEntry;
 
         // Footer
         const footer = document.createElement('div');
@@ -792,15 +992,14 @@
     async function processDeposit(amount, isBigWin) {
         if (amount < 1e-8 || isProcessing) return;
         if (!canVaultNow()) {
-            log(`✗ Vault action skipped: rate limit reached (${RATE_LIMIT_MAX} per hour).`);
+            logActivity(`${pickFlavor(FLAVOR.rateLimit)} - Rate limit reached`, 'warning');
             if (uiWidget && typeof uiWidget.updateVaultCount === "function") uiWidget.updateVaultCount();
             return;
         }
         isProcessing = true;
-        log(isBigWin
-            ? `😸 Fancy feast! Saving ${(SAVE_AMOUNT*BIG_WIN_MULTIPLIER*100).toFixed(0)}%: ${amount.toFixed(8)} ${activeCurrency}`
-            : `😺 Positive balance difference detected! Saving ${(SAVE_AMOUNT*100).toFixed(0)}%: ${amount.toFixed(8)} ${activeCurrency}`
-        );
+        const pct = (SAVE_AMOUNT * (isBigWin ? BIG_WIN_MULTIPLIER : 1) * 100).toFixed(0);
+        const flavor = pickFlavor(isBigWin ? FLAVOR.bigWin : FLAVOR.profit);
+        logActivity(`${flavor} Vaulting ${pct}%: ${amount.toFixed(6)} ${activeCurrency.toUpperCase()}`, isBigWin ? 'bigwin' : 'profit');
         try {
             const resp = await stakeApi.depositToVault(activeCurrency, amount);
             isProcessing = false;
@@ -811,13 +1010,13 @@
                 // Re-read balance after successful deposit to avoid drift
                 oldBalance = getCurrentBalance();
                 if (uiWidget && typeof uiWidget.updateVaultCount === "function") uiWidget.updateVaultCount();
-                log(`✓ Saved ${amount.toFixed(8)} ${activeCurrency} to vault!`);
+                logActivity(`Secured ${amount.toFixed(6)} ${activeCurrency.toUpperCase()}`, 'success');
             } else {
-                log('✗ Deposit failed, you may be rate limited..', resp);
+                logActivity('Vault failed - may be rate limited', 'error');
             }
         } catch (e) {
             isProcessing = false;
-            log('Vault deposit error:', e);
+            logActivity('Vault error: ' + (e.message || 'unknown'), 'error');
         }
     }
 
@@ -888,7 +1087,7 @@
         if (depositAmt > 0) {
             if (cur - lastBalance >= depositAmt * 0.95 && lastVaultedDeposit !== depositAmt) {
                 const toVault = depositAmt * SAVE_AMOUNT;
-                log(`💰 Detected deposit of ${depositAmt.toFixed(8)} ${activeCurrency}, vaulting ${(SAVE_AMOUNT * 100).toFixed(0)}% (${toVault.toFixed(8)})`);
+                logActivity(`${pickFlavor(FLAVOR.deposit)} +${depositAmt.toFixed(4)} ${activeCurrency.toUpperCase()}`, 'info');
                 processDeposit(toVault, false);
                 lastVaultedDeposit = depositAmt;
                 oldBalance = cur;
@@ -910,8 +1109,8 @@
         if (running) return;
         isScriptInitialized = true;
         running = true;
-        log(`AutoVault script started on ${hostname} (${isStakeUS ? 'Stake.us' : 'Stake.com'})`);
-        log(`Currency: ${getCurrency()}`);
+        logActivity(pickFlavor(FLAVOR.start), 'success');
+        logActivity(`Watching ${getCurrency().toUpperCase()} on ${isStakeUS ? 'Stake.us' : 'Stake.com'}`, 'info');
         vaultDisplay = new VaultDisplay();
         stakeApi = new StakeApi();
         activeCurrency = getCurrency();
@@ -943,7 +1142,7 @@
             uiWidget.setRunning(false);
             if (typeof uiWidget.updateVaultCount === "function") uiWidget.updateVaultCount();
         }
-        log('AutoVault script stopped.');
+        logActivity(pickFlavor(FLAVOR.stop), 'info');
     }
 
     // --- UI Widget setup (floaty) ---
