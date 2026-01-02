@@ -89,56 +89,50 @@
     // --- Flavor Text ---
     const FLAVOR = {
         profit: [
-            "Cha-ching!",
-            "Nice one!",
-            "Stacking sats...",
-            "To the vault!",
-            "Secured the bag",
-            "Money moves",
-            "Profit locked",
-            "Gains secured",
-            "Smart money",
-            "Auto-saved"
+            "Profit secured",
+            "Vaulting profit",
+            "Gains locked",
+            "Auto-saved",
+            "Profit detected",
+            "Saving gains",
+            "Locked in",
+            "Secured"
         ],
         bigWin: [
-            "JACKPOT VIBES!",
-            "Whale alert!",
-            "MEGA WIN!",
-            "Holy moly!",
-            "Printing money!",
-            "Big fish energy",
-            "LFG!!!",
-            "Massive W",
-            "On fire!",
-            "God mode"
+            "Big win detected",
+            "Large profit",
+            "Major gain",
+            "Significant win",
+            "Big one incoming",
+            "Notable profit"
         ],
         deposit: [
             "Deposit detected",
-            "Incoming funds",
+            "Incoming deposit",
             "New deposit",
-            "Funds arrived",
-            "Balance updated"
+            "Funds received",
+            "Deposit arrived"
         ],
         start: [
-            "AutoVault engaged",
-            "Protection active",
-            "Watching your back",
-            "Guardian mode ON",
-            "Vault standing by"
+            "AutoVault started",
+            "Monitoring active",
+            "Watching balance",
+            "Protection enabled",
+            "Now watching"
         ],
         stop: [
-            "AutoVault paused",
-            "Taking a break",
-            "Guardian resting",
-            "Protection off",
-            "Standing down"
+            "AutoVault stopped",
+            "Monitoring paused",
+            "Protection disabled",
+            "Stopped watching",
+            "Paused"
         ],
         rateLimit: [
-            "Slow down tiger",
-            "Rate limit hit",
-            "Too fast!",
-            "Cooling off...",
-            "Limit reached"
+            "Rate limited",
+            "Limit reached",
+            "Throttled",
+            "Too many requests",
+            "Cooling down"
         ]
     };
     const pickFlavor = (arr) => arr[Math.floor(Math.random() * arr.length)];
