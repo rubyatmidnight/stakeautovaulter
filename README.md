@@ -3,10 +3,16 @@ updated: 1/2/2026
 
 A tool to automatically vault profits while playing games on Stake, using Tampermonkey.
 
+
+## Installation: 
 Get tampermonkey through the extensions store for your respective browser: https://www.tampermonkey.net/
 
-Paste the entire source code as a new script
-Open Stake.us or Stake.com
+- Paste the entire source code as a new script
+- Open Stake.us or Stake.com
+- make sure it's enabled on
+- Configure as desired
+- Click 'start'
+- Click 'stop' when done.
 
 
 

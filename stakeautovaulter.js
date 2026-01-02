@@ -23,7 +23,7 @@
     'use strict';
 
     // --- Config ---
-    const INIT_DELAY = 4000;
+    const INIT_DELAY = 2000;
     const DEFAULT_CURRENCY = 'bnb';
     const DEFAULT_US_CURRENCY = 'sc';
     const MIN_BALANCE_CHECKS = 2;
