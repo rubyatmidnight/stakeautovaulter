@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Stake Auto-Vault Utility (Floaty UI)
-// @version      0.9-improved
-// @description  Automatically sends a percentage of your profits to the vault, works on stake.com, its mirror sites, and stake.us. Now with floaty draggable UI, config persistence, touch support, and improved reliability!
-// @author       by Ruby, courtesy of Stake Stats; original code framework by Christopher Hummel
+// @version      1.0
+// @description  Automatically sends a percentage of your profits to the vault, works on stake.com, its mirror sites, and stake.us
+// @author       by Ruby, courtesy of Stake Stats
 // @website      https://stakestats.net/
 // @homepage     https://feli.fyi/
 // @match        https://stake.com/*
@@ -47,7 +47,6 @@
             saveAmount: 0.1,
             bigWinThreshold: 5,
             bigWinMultiplier: 3,
-            displayVaultTotal: true,
             checkInterval: 90000
         };
     }
@@ -60,7 +59,6 @@
     let SAVE_AMOUNT = config.saveAmount;
     let BIG_WIN_THRESHOLD = config.bigWinThreshold;
     let BIG_WIN_MULTIPLIER = config.bigWinMultiplier;
-    let DISPLAY_VAULT_TOTAL = config.displayVaultTotal;
     let CHECK_INTERVAL = config.checkInterval;
 
     // --- Site detection ---
@@ -89,50 +87,28 @@
     // --- Flavor Text ---
     const FLAVOR = {
         profit: [
-            "Profit secured",
-            "Vaulting profit",
-            "Gains locked",
-            "Auto-saved",
-            "Profit detected",
-            "Saving gains",
-            "Locked in",
-            "Secured"
+            "Positive difference,",
+            "Profit detected"
         ],
         bigWin: [
             "Big win detected",
-            "Large profit",
-            "Major gain",
-            "Significant win",
-            "Big one incoming",
-            "Notable profit"
+            "Large profit"
         ],
         deposit: [
             "Deposit detected",
-            "Incoming deposit",
-            "New deposit",
-            "Funds received",
-            "Deposit arrived"
+        
         ],
         start: [
             "AutoVault started",
-            "Monitoring active",
-            "Watching balance",
-            "Protection enabled",
-            "Now watching"
+            "Monitoring active"
         ],
         stop: [
             "AutoVault stopped",
-            "Monitoring paused",
-            "Protection disabled",
-            "Stopped watching",
-            "Paused"
+            "Monitoring paused"
         ],
         rateLimit: [
-            "Rate limited",
-            "Limit reached",
-            "Throttled",
-            "Too many requests",
-            "Cooling down"
+            "Rate limited, vaulting paused. Please wait until it resets",
+            "Limit reached, vaulting paused. Please wait until it resets"
         ]
     };
     const pickFlavor = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -227,8 +203,9 @@
         constructor() {
             this._el = document.createElement("span");
             this._el.id = "vaultDisplayElement";
-            this._el.innerText = "0.00000000";
-            this._el.title = "Deposited to vault";
+            this._vaulted = 0;
+            this._currency = getCurrency();
+            this._el.title = "Vaulted this session";
             Object.assign(this._el.style, {
                 marginLeft: "8px",
                 color: "#00c4a7",
@@ -240,28 +217,49 @@
                 boxShadow: "0 2px 8px #0002"
             });
             // Instead of inserting into nav, floaty UI will show this in the widget
+            this._load();
+            this.render();
         }
-        async updateVaultBalance() {
-            const api = new StakeApi();
-            const resp = await api.getBalances();
-            if (resp && resp.data && resp.data.user) {
-                const curr = getCurrency();
-                const bal = resp.data.user.balances.find(x =>
-                    x.vault.currency.toLowerCase() === curr
-                );
-                if (bal) this._el.innerText = (+bal.vault.amount).toFixed(8);
+        _storageKey() {
+            const c = (this._currency || getCurrency() || '').toLowerCase();
+            return `autovault-vaulted-session:${c}`;
+        }
+        _load() {
+            try {
+                const raw = sessionStorage.getItem(this._storageKey());
+                const v = parseFloat(raw);
+                if (!isNaN(v) && v >= 0) this._vaulted = v;
+            } catch (e) {
+                // ignore
             }
+        }
+        _save() {
+            try {
+                sessionStorage.setItem(this._storageKey(), String(this._vaulted));
+            } catch (e) {
+                // ignore
+            }
+        }
+        setCurrency(currency) {
+            this._currency = (currency || getCurrency() || '').toLowerCase();
+            this._load();
+            this.render();
+        }
+        render() {
+            if (!this._el) return;
+            this._el.innerText = (this._vaulted || 0).toFixed(8);
         }
         update(amount) {
-            if (DISPLAY_VAULT_TOTAL) this.updateVaultBalance();
-            else {
-                const cur = parseFloat(this._el.innerText) || 0;
-                this._el.innerText = (cur + amount).toFixed(8);
-            }
+            const add = +amount;
+            if (isNaN(add) || add <= 0) return;
+            this._vaulted = (this._vaulted || 0) + add;
+            this._save();
+            this.render();
         }
         reset() {
-            if (DISPLAY_VAULT_TOTAL) this.updateVaultBalance();
-            else this._el.innerText = "0.00000000";
+            this._vaulted = 0;
+            this._save();
+            this.render();
         }
     }
 
@@ -704,6 +702,10 @@
                 <input type="number" id="vaultBigWinThreshold" min="1" step="0.1" value="${getParams().bigWinThreshold}">
             </div>
             <div class="av-row">
+                <span class="av-label">Big Win Multiplier</span>
+                <input type="number" id="vaultBigWinMultiplier" min="1" step="0.1" value="${getParams().bigWinMultiplier}">
+            </div>
+            <div class="av-row">
                 <span class="av-label">Check Interval (sec)</span>
                 <input type="number" id="vaultCheckInterval" min="10" step="1" value="${getParams().checkInterval}">
             </div>
@@ -784,6 +786,7 @@
         // Replace vault display element reference
         const vaultBalEl = content.querySelector('#avVaultBal');
         vaultDisplay._el = vaultBalEl;
+        vaultDisplay.render();
 
         // View mode switching
         const statusDot = widget.querySelector('#avStatusDot');
@@ -895,6 +898,12 @@
             setParams({bigWinThreshold: v});
             this.value = v;
         };
+        content.querySelector('#vaultBigWinMultiplier').onchange = function() {
+            let v = parseFloat(this.value);
+            if (isNaN(v) || v < 1) v = 1;
+            setParams({bigWinMultiplier: v});
+            this.value = v;
+        };
         content.querySelector('#vaultCheckInterval').onchange = function() {
             let v = parseInt(this.value, 10);
             if (isNaN(v) || v < 10) v = 10;
@@ -931,12 +940,14 @@
         return {
             saveAmount: SAVE_AMOUNT,
             bigWinThreshold: BIG_WIN_THRESHOLD,
+            bigWinMultiplier: BIG_WIN_MULTIPLIER,
             checkInterval: Math.round(CHECK_INTERVAL/1000)
         };
     }
     function setParams(obj) {
         if (obj.saveAmount !== undefined) SAVE_AMOUNT = obj.saveAmount;
         if (obj.bigWinThreshold !== undefined) BIG_WIN_THRESHOLD = obj.bigWinThreshold;
+        if (obj.bigWinMultiplier !== undefined) BIG_WIN_MULTIPLIER = obj.bigWinMultiplier;
         if (obj.checkInterval !== undefined) CHECK_INTERVAL = obj.checkInterval * 1000;
 
         // Save config to localStorage
@@ -944,7 +955,6 @@
             saveAmount: SAVE_AMOUNT,
             bigWinThreshold: BIG_WIN_THRESHOLD,
             bigWinMultiplier: BIG_WIN_MULTIPLIER,
-            displayVaultTotal: DISPLAY_VAULT_TOTAL,
             checkInterval: CHECK_INTERVAL
         };
         saveConfig(config);
@@ -962,6 +972,7 @@
         if (newCurrency !== activeCurrency) {
             log(`💱 Currency changed: ${activeCurrency} → ${newCurrency}`);
             activeCurrency = newCurrency;
+            vaultDisplay.setCurrency(activeCurrency);
             vaultDisplay.reset();
             isInitialized = false;
             balanceChecks = 0;
@@ -1105,9 +1116,11 @@
         running = true;
         logActivity(pickFlavor(FLAVOR.start), 'success');
         logActivity(`Watching ${getCurrency().toUpperCase()} on ${isStakeUS ? 'Stake.us' : 'Stake.com'}`, 'info');
-        vaultDisplay = new VaultDisplay();
+        if (!vaultDisplay) vaultDisplay = new VaultDisplay();
         stakeApi = new StakeApi();
         activeCurrency = getCurrency();
+        vaultDisplay.setCurrency(activeCurrency);
+        vaultDisplay.reset();
         oldBalance = 0;
         isProcessing = false;
         isInitialized = false;
@@ -1131,6 +1144,7 @@
         isScriptInitialized = false;
         if (vaultInterval) clearInterval(vaultInterval);
         vaultInterval = null;
+        if (vaultDisplay) vaultDisplay.reset();
         if (uiWidget) {
             uiWidget.setStatus('Stopped', '#fff');
             uiWidget.setRunning(false);
@@ -1142,7 +1156,7 @@
     // --- UI Widget setup (floaty) ---
     setTimeout(() => {
         if (!uiWidget) {
-            vaultDisplay = new VaultDisplay();
+            if (!vaultDisplay) vaultDisplay = new VaultDisplay();
             uiWidget = createVaultFloatyUI(
                 startVaultScript,
                 stopVaultScript,
@@ -1150,6 +1164,7 @@
                 setParams,
                 vaultDisplay
             );
+            vaultDisplay.setCurrency(getCurrency());
         }
     }, INIT_DELAY);
 
