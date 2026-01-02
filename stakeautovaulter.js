@@ -46,10 +46,20 @@
         return m ? m.pop().replace(/"/g, '') : '';
     };
 
-    // --- Simplified selectors ---
-    const BALANCE_SELECTOR = isStakeUS
-        ? '[data-testid="user-balance"] .numeric, .numeric.variant-highlighted'
-        : '[data-testid="user-balance"], .balance-value, .navigation .balance-toggle .currency span.content span';
+    // --- Balance selectors (updated for current Stake DOM structure) ---
+    // Primary: coin-toggle button contains balance in .content span
+    // Fallbacks included for potential variations
+    const BALANCE_SELECTORS = [
+        '[data-testid="coin-toggle"] .content span[data-ds-text="true"]',
+        '[data-testid="balance-toggle"] .content span[data-ds-text="true"]',
+        '[data-testid="coin-toggle"] .content span',
+        '[data-testid="balance-toggle"] span.content span',
+        // Legacy selectors as final fallback
+        '[data-testid="user-balance"] .numeric',
+        '.numeric.variant-highlighted',
+        '[data-testid="user-balance"]',
+        '.balance-value'
+    ];
 
     // --- Stake API ---
     class StakeApi {
@@ -168,11 +178,30 @@
 
     // --- Get balance from UI ---
     function getCurrentBalance() {
-        const el = document.querySelector(BALANCE_SELECTOR);
-        if (el) {
-            const txt = el.textContent.trim().replace(/[^\d.-]/g, '');
-            const val = parseFloat(txt);
-            if (!isNaN(val)) return val;
+        // Try each selector in order until we find a valid balance
+        for (const selector of BALANCE_SELECTORS) {
+            try {
+                const el = document.querySelector(selector);
+                if (el) {
+                    const txt = el.textContent.trim().replace(/[^\d.-]/g, '');
+                    const val = parseFloat(txt);
+                    if (!isNaN(val) && val >= 0) {
+                        // Cache the working selector for performance
+                        if (!getCurrentBalance._workingSelector || getCurrentBalance._workingSelector !== selector) {
+                            getCurrentBalance._workingSelector = selector;
+                            log(`📍 Balance detected using selector: ${selector}`);
+                        }
+                        return val;
+                    }
+                }
+            } catch (e) {
+                // Continue to next selector
+            }
+        }
+        // If no selector worked, log a warning (but only once per session)
+        if (!getCurrentBalance._warned) {
+            getCurrentBalance._warned = true;
+            log('⚠️ Could not detect balance with any known selector. Please check if Stake updated their UI.');
         }
         return 0;
     }
@@ -735,8 +764,8 @@
         let depositAmt = detectDepositEvent();
         if (depositAmt > 0) {
             if (cur - lastBalance >= depositAmt * 0.95 && lastVaultedDeposit !== depositAmt) {
-                const toVault = depositAmt * 0.2;
-                log(`💰 Detected deposit of ${depositAmt.toFixed(8)} ${activeCurrency}, vaulting 20% (${toVault.toFixed(8)})`);
+                const toVault = depositAmt * SAVE_AMOUNT;
+                log(`💰 Detected deposit of ${depositAmt.toFixed(8)} ${activeCurrency}, vaulting ${(SAVE_AMOUNT * 100).toFixed(0)}% (${toVault.toFixed(8)})`);
                 processDeposit(toVault, false);
                 lastVaultedDeposit = depositAmt;
                 oldBalance = cur;
