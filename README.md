@@ -3,6 +3,7 @@ updated: 1/2/2026
 
 A tool to automatically vault profits while playing games on Stake, using Tampermonkey.
 
+# Does not require an api key, an account token, or account access, or 2fa access 
 
 ## Installation: 
 
