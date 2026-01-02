@@ -235,6 +235,7 @@
                             getCurrentBalance._workingSelector = selector;
                             log(`📍 Balance detected using selector: ${selector}`);
                         }
+                        getCurrentBalance.lastKnownBalance = val;
                         return val;
                     }
                 }
@@ -910,7 +911,7 @@
         log(`AutoVault script started on ${hostname} (${isStakeUS ? 'Stake.us' : 'Stake.com'})`);
         log(`Currency: ${getCurrency()}`);
         vaultDisplay = new VaultDisplay();
-        stakeApi = new StakeApi();
+             stakeApi = new StakeApi();
         activeCurrency = getCurrency();
         oldBalance = 0;
         isProcessing = false;
