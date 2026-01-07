@@ -10,6 +10,7 @@ Make a github issue if there's any problems found. Didn't test on every single c
 
 A tool to automatically vault profits while playing games on Stake, using Tampermonkey.
 
+# Does not require an api key, an account token, or account access, or 2fa access 
 
 ## Installation: 
 
