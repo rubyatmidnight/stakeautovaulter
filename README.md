@@ -1,5 +1,12 @@
 # stakeautovaulter
-updated: 1/2/2026
+updated: 1/6/2026
+
+
+Update: 1.02
+
+Now works for masked currency displays (e.g. ARS, KES, etc)
+
+Make a github issue if there's any problems found. Didn't test on every single currency, but most
 
 A tool to automatically vault profits while playing games on Stake, using Tampermonkey.
 

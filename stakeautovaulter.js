@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Stake Auto-Vault Utility (Floaty UI)
-// @version      1.0
+// @version      1.02
 // @description  Automatically sends a percentage of your profits to the vault, works on stake.com, its mirror sites, and stake.us
 // @author       by Ruby, courtesy of Stake Stats
 // @website      https://stakestats.net/
@@ -264,6 +264,61 @@
     }
 
     // --- Simplified currency detection ---
+    function parseStakeAmount(text) {
+        if (!text) return NaN;
+        const raw = String(text).replace(/\u00a0/g, ' ').trim();
+        if (!raw) return NaN;
+        if (/[•*]+/.test(raw)) return NaN;
+
+        const m = raw.match(/[-+]?\d[\d\s,.'’]*(?:[.,]\d+)?[kmbt]?/i);
+        if (!m) return NaN;
+
+        let token = m[0].trim();
+        const suffixMatch = token.match(/[kmbt]$/i);
+        const suffix = suffixMatch ? suffixMatch[0].toLowerCase() : '';
+        token = token.replace(/[kmbt]$/i, '').trim();
+
+        token = token.replace(/[\s'’]/g, '');
+
+        const hasDot = token.includes('.');
+        const hasComma = token.includes(',');
+        if (hasDot && hasComma) {
+            if (token.lastIndexOf('.') > token.lastIndexOf(',')) {
+                token = token.replace(/,/g, '');
+            } else {
+                token = token.replace(/\./g, '').replace(/,/g, '.');
+            }
+        } else if (hasComma && !hasDot) {
+            const parts = token.split(',');
+            if (parts.length === 2 && parts[1].length <= 2) token = `${parts[0]}.${parts[1]}`;
+            else token = token.replace(/,/g, '');
+        } else {
+            token = token.replace(/,/g, '');
+        }
+
+        const n = parseFloat(token);
+        if (isNaN(n)) return NaN;
+
+        const mult =
+            suffix === 'k' ? 1e3 :
+            suffix === 'm' ? 1e6 :
+            suffix === 'b' ? 1e9 :
+            suffix === 't' ? 1e12 :
+            1;
+
+        return n * mult;
+    }
+
+    function detectCurrencyFromBalanceBar() {
+        const el =
+            document.querySelector('[data-testid="coin-toggle"]') ||
+            document.querySelector('[data-testid="balance-toggle"]');
+        if (!el) return null;
+        const txt = (el.textContent || '').trim();
+        const m = txt.match(/\b[A-Z]{2,5}\b/);
+        return m ? m[0].toLowerCase() : null;
+    }
+
     function getCurrency() {
         const now = Date.now();
         if (getCurrency.cached && getCurrency.cacheTime && (now - getCurrency.cacheTime < CURRENCY_CACHE_TIMEOUT)) {
@@ -278,6 +333,12 @@
                 return getCurrency.cached;
             }
         }
+        const fromBar = detectCurrencyFromBalanceBar();
+        if (fromBar) {
+            getCurrency.cached = fromBar;
+            getCurrency.cacheTime = now;
+            return getCurrency.cached;
+        }
         const defaultCurr = isStakeUS ? DEFAULT_US_CURRENCY : DEFAULT_CURRENCY;
         getCurrency.cached = defaultCurr;
         getCurrency.cacheTime = now;
@@ -286,25 +347,35 @@
 
     // --- Get balance from UI ---
     function getCurrentBalance() {
+        const curCode = (activeCurrency || getCurrency() || '').toLowerCase();
+        const uiCode = (detectCurrencyFromBalanceBar() || '').toLowerCase();
+        if (curCode && uiCode && uiCode !== curCode) {
+            const apiVal = getCurrentBalance._api?.[curCode];
+            if (typeof apiVal === 'number' && apiVal >= 0) return apiVal;
+        }
         // Try each selector in order until we find a valid balance
         for (const selector of BALANCE_SELECTORS) {
             try {
                 const el = document.querySelector(selector);
                 if (el) {
-                    const txt = el.textContent.trim().replace(/[^\d.-]/g, '');
-                    const val = parseFloat(txt);
+                    const val = parseStakeAmount(el.textContent);
                     if (!isNaN(val) && val >= 0) {
                         // Cache the working selector for performance
                         if (!getCurrentBalance._workingSelector || getCurrentBalance._workingSelector !== selector) {
                             getCurrentBalance._workingSelector = selector;
                             log(`📍 Balance detected using selector: ${selector}`);
                         }
+                        getCurrentBalance.lastKnownBalance = val;
                         return val;
                     }
                 }
             } catch (e) {
                 // Continue to next selector
             }
+        }
+        if (curCode) {
+            const apiVal = getCurrentBalance._api?.[curCode];
+            if (typeof apiVal === 'number' && apiVal >= 0) return apiVal;
         }
         // If no selector worked, log a warning (but only once per session)
         if (!getCurrentBalance._warned) {
@@ -925,6 +996,7 @@
     let vaultDisplay = null;
     let stakeApi = null;
     let activeCurrency = null;
+    let apiBalanceInterval = null;
     let oldBalance = 0;
     let isProcessing = false;
     let isInitialized = false;
@@ -935,6 +1007,36 @@
     let lastVaultedDeposit = 0;
     let running = false;
     let uiWidget = null;
+
+    async function refreshApiBalance() {
+        try {
+            if (!stakeApi) stakeApi = new StakeApi();
+            const cur = (activeCurrency || getCurrency() || '').toLowerCase();
+            if (!cur) return;
+            const resp = await stakeApi.getBalances();
+            const balances = resp?.data?.user?.balances;
+            if (!Array.isArray(balances)) return;
+            const bal = balances.find(x => x?.available?.currency?.toLowerCase() === cur);
+            const amt = bal?.available?.amount;
+            const n = typeof amt === 'number' ? amt : parseFloat(amt);
+            if (isNaN(n) || n < 0) return;
+            if (!getCurrentBalance._api) getCurrentBalance._api = {};
+            getCurrentBalance._api[cur] = n;
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    function startApiBalancePolling() {
+        if (apiBalanceInterval) clearInterval(apiBalanceInterval);
+        apiBalanceInterval = setInterval(refreshApiBalance, 5000);
+        refreshApiBalance();
+    }
+
+    function stopApiBalancePolling() {
+        if (apiBalanceInterval) clearInterval(apiBalanceInterval);
+        apiBalanceInterval = null;
+    }
 
     function getParams() {
         return {
@@ -972,6 +1074,7 @@
         if (newCurrency !== activeCurrency) {
             log(`💱 Currency changed: ${activeCurrency} → ${newCurrency}`);
             activeCurrency = newCurrency;
+            startApiBalancePolling();
             vaultDisplay.setCurrency(activeCurrency);
             vaultDisplay.reset();
             isInitialized = false;
@@ -1061,15 +1164,14 @@
         for (const sel of possibleSelectors) {
             const nodes = document.querySelectorAll(sel);
             for (const node of nodes) {
-                const txt = node.textContent.toLowerCase();
-                if (txt.includes('deposit') && /\d/.test(txt)) {
-                    const match = txt.match(/([\d,.]+)\s*[a-z]{2,4}/i);
-                    if (match) {
-                        depositAmount = parseFloat(match[1].replace(/,/g, ''));
-                        if (!isNaN(depositAmount) && depositAmount > 0) {
-                            found = true;
-                            break;
-                        }
+                const txt = (node.textContent || '');
+                const lower = txt.toLowerCase();
+                if (lower.includes('deposit') && /\d/.test(lower)) {
+                    const amt = parseStakeAmount(txt);
+                    if (!isNaN(amt) && amt > 0) {
+                        depositAmount = amt;
+                        found = true;
+                        break;
                     }
                 }
             }
@@ -1119,6 +1221,7 @@
         if (!vaultDisplay) vaultDisplay = new VaultDisplay();
         stakeApi = new StakeApi();
         activeCurrency = getCurrency();
+        startApiBalancePolling();
         vaultDisplay.setCurrency(activeCurrency);
         vaultDisplay.reset();
         oldBalance = 0;
@@ -1144,6 +1247,7 @@
         isScriptInitialized = false;
         if (vaultInterval) clearInterval(vaultInterval);
         vaultInterval = null;
+        stopApiBalancePolling();
         if (vaultDisplay) vaultDisplay.reset();
         if (uiWidget) {
             uiWidget.setStatus('Stopped', '#fff');
